@@ -66,6 +66,10 @@ func (c *criNetworkHost) GetNetNS(containerID string) (string, error) {
 	return c.kubelet.GetRuntime().GetNetNS(kubecontainer.ContainerID{Type: "", ID: containerID})
 }
 
+func (c *criNetworkHost) GetPodCores(containerID string) (string, error) {
+	return c.kubelet.GetRuntime().GetPodCores(kubecontainer.ContainerID{Type: "", ID: containerID})
+}
+
 // noOpLegacyHost implements the network.LegacyHost interface for the remote
 // runtime shim by just returning empties. It doesn't support legacy features
 // like host port and bandwidth shaping.

@@ -24,11 +24,13 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/golang/glog"
 	"k8s.io/kubernetes/pkg/api"
 	"k8s.io/kubernetes/pkg/client/restclient"
 	utilnet "k8s.io/kubernetes/pkg/util/net"
 	"k8s.io/kubernetes/plugin/pkg/scheduler/algorithm"
 	schedulerapi "k8s.io/kubernetes/plugin/pkg/scheduler/api"
+	"k8s.io/kubernetes/plugin/pkg/scheduler/schedulercache"
 )
 
 const (
@@ -81,6 +83,9 @@ func NewHTTPExtender(config *schedulerapi.ExtenderConfig, apiVersion string) (al
 		Transport: transport,
 		Timeout:   config.HTTPTimeout,
 	}
+	if apiVersion == "" {
+		apiVersion = "v1"
+	}
 	return &HTTPExtender{
 		extenderURL:    config.URLPrefix,
 		apiVersion:     apiVersion,
@@ -94,7 +99,7 @@ func NewHTTPExtender(config *schedulerapi.ExtenderConfig, apiVersion string) (al
 // Filter based on extender implemented predicate functions. The filtered list is
 // expected to be a subset of the supplied list. failedNodesMap optionally contains
 // the list of failed nodes and failure reasons.
-func (h *HTTPExtender) Filter(pod *api.Pod, nodes []*api.Node) ([]*api.Node, schedulerapi.FailedNodesMap, error) {
+func (h *HTTPExtender) Filter(pod *api.Pod, nodes []*api.Node, nodeNameToInfo map[string]*schedulercache.NodeInfo) ([]*api.Node, schedulerapi.FailedNodesMap, error) {
 	var result schedulerapi.ExtenderFilterResult
 
 	if h.filterVerb == "" {
@@ -102,12 +107,15 @@ func (h *HTTPExtender) Filter(pod *api.Pod, nodes []*api.Node) ([]*api.Node, sch
 	}
 
 	nodeItems := make([]api.Node, 0, len(nodes))
+	nodeToPods := make(map[string][]*api.Pod)
 	for _, node := range nodes {
 		nodeItems = append(nodeItems, *node)
+		nodeToPods[node.Name] = nodeNameToInfo[node.Name].Pods()
 	}
 	args := schedulerapi.ExtenderArgs{
-		Pod:   *pod,
-		Nodes: api.NodeList{Items: nodeItems},
+		Pod:        *pod,
+		Nodes:      api.NodeList{Items: nodeItems},
+		NodeToPods: nodeToPods,
 	}
 
 	if err := h.send(h.filterVerb, &args, &result); err != nil {
@@ -127,7 +135,7 @@ func (h *HTTPExtender) Filter(pod *api.Pod, nodes []*api.Node) ([]*api.Node, sch
 // Prioritize based on extender implemented priority functions. Weight*priority is added
 // up for each such priority function. The returned score is added to the score computed
 // by Kubernetes scheduler. The total score is used to do the host selection.
-func (h *HTTPExtender) Prioritize(pod *api.Pod, nodes []*api.Node) (*schedulerapi.HostPriorityList, int, error) {
+func (h *HTTPExtender) Prioritize(pod *api.Pod, nodes []*api.Node, nodeNameToInfo map[string]*schedulercache.NodeInfo) (*schedulerapi.HostPriorityList, int, error) {
 	var result schedulerapi.HostPriorityList
 
 	if h.prioritizeVerb == "" {
@@ -139,12 +147,15 @@ func (h *HTTPExtender) Prioritize(pod *api.Pod, nodes []*api.Node) (*schedulerap
 	}
 
 	nodeItems := make([]api.Node, 0, len(nodes))
+	nodeToPods := make(map[string][]*api.Pod)
 	for _, node := range nodes {
 		nodeItems = append(nodeItems, *node)
+		nodeToPods[node.Name] = nodeNameToInfo[node.Name].Pods()
 	}
 	args := schedulerapi.ExtenderArgs{
-		Pod:   *pod,
-		Nodes: api.NodeList{Items: nodeItems},
+		Pod:        *pod,
+		Nodes:      api.NodeList{Items: nodeItems},
+		NodeToPods: nodeToPods,
 	}
 
 	if err := h.send(h.prioritizeVerb, &args, &result); err != nil {
@@ -161,6 +172,8 @@ func (h *HTTPExtender) send(action string, args interface{}, result interface{})
 	}
 
 	url := h.extenderURL + "/" + h.apiVersion + "/" + action
+
+	glog.V(3).Infof("Test send url: %v", url)
 
 	req, err := http.NewRequest("POST", url, bytes.NewReader(out))
 	if err != nil {

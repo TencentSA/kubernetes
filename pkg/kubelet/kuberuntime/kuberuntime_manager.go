@@ -20,6 +20,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"strconv"
 	"time"
 
 	"github.com/coreos/go-semver/semver"
@@ -771,6 +772,10 @@ func (m *kubeGenericRuntimeManager) doBackOff(pod *api.Pod, container *api.Conta
 		glog.Infof("%s", err.Error())
 		return true, err.Error(), kubecontainer.ErrCrashLoopBackOff
 	}
+	maxRestartTimes, err := strconv.Atoi(pod.ObjectMeta.Annotations["maxRestartTimes"])
+	if err == nil && cStatus.RestartCount >= maxRestartTimes {
+		return true, "The maxRestartTimes is meeted by RestartCount", kubecontainer.ErrCrashTooMany
+	}
 
 	backOff.Next(key, ts)
 	return false, "", nil
@@ -927,4 +932,8 @@ func (m *kubeGenericRuntimeManager) UpdatePodCIDR(podCIDR string) error {
 				PodCidr: &podCIDR,
 			},
 		})
+}
+
+func (m *kubeGenericRuntimeManager) GetPodCores(_ kubecontainer.ContainerID) (string, error) {
+	return "", fmt.Errorf("not supported")
 }

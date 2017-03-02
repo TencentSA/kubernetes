@@ -233,6 +233,8 @@ func RegisterConversions(scheme *runtime.Scheme) error {
 		Convert_api_PhotonPersistentDiskVolumeSource_To_v1_PhotonPersistentDiskVolumeSource,
 		Convert_v1_Pod_To_api_Pod,
 		Convert_api_Pod_To_v1_Pod,
+		Convert_v1_PodAddress_To_api_PodAddress,
+		Convert_api_PodAddress_To_v1_PodAddress,
 		Convert_v1_PodAffinity_To_api_PodAffinity,
 		Convert_api_PodAffinity_To_v1_PodAffinity,
 		Convert_v1_PodAffinityTerm_To_api_PodAffinityTerm,
@@ -2782,6 +2784,26 @@ func autoConvert_api_Pod_To_v1_Pod(in *api.Pod, out *Pod, s conversion.Scope) er
 	return nil
 }
 
+func autoConvert_v1_PodAddress_To_api_PodAddress(in *PodAddress, out *api.PodAddress, s conversion.Scope) error {
+	out.Address = in.Address
+	out.IfName = in.IfName
+	return nil
+}
+
+func Convert_v1_PodAddress_To_api_PodAddress(in *PodAddress, out *api.PodAddress, s conversion.Scope) error {
+	return autoConvert_v1_PodAddress_To_api_PodAddress(in, out, s)
+}
+
+func autoConvert_api_PodAddress_To_v1_PodAddress(in *api.PodAddress, out *PodAddress, s conversion.Scope) error {
+	out.Address = in.Address
+	out.IfName = in.IfName
+	return nil
+}
+
+func Convert_api_PodAddress_To_v1_PodAddress(in *api.PodAddress, out *PodAddress, s conversion.Scope) error {
+	return autoConvert_api_PodAddress_To_v1_PodAddress(in, out, s)
+}
+
 func autoConvert_v1_PodAffinity_To_api_PodAffinity(in *PodAffinity, out *api.PodAffinity, s conversion.Scope) error {
 	out.RequiredDuringSchedulingIgnoredDuringExecution = *(*[]api.PodAffinityTerm)(unsafe.Pointer(&in.RequiredDuringSchedulingIgnoredDuringExecution))
 	out.PreferredDuringSchedulingIgnoredDuringExecution = *(*[]api.WeightedPodAffinityTerm)(unsafe.Pointer(&in.PreferredDuringSchedulingIgnoredDuringExecution))
@@ -3141,6 +3163,8 @@ func autoConvert_v1_PodStatus_To_api_PodStatus(in *PodStatus, out *api.PodStatus
 	out.StartTime = (*unversioned.Time)(unsafe.Pointer(in.StartTime))
 	out.InitContainerStatuses = *(*[]api.ContainerStatus)(unsafe.Pointer(&in.InitContainerStatuses))
 	out.ContainerStatuses = *(*[]api.ContainerStatus)(unsafe.Pointer(&in.ContainerStatuses))
+	out.PodAddresses = *(*[]api.PodAddress)(unsafe.Pointer(&in.PodAddresses))
+	out.CPUSet = in.CPUSet
 	return nil
 }
 
@@ -3158,6 +3182,8 @@ func autoConvert_api_PodStatus_To_v1_PodStatus(in *api.PodStatus, out *PodStatus
 	out.StartTime = (*unversioned.Time)(unsafe.Pointer(in.StartTime))
 	out.InitContainerStatuses = *(*[]ContainerStatus)(unsafe.Pointer(&in.InitContainerStatuses))
 	out.ContainerStatuses = *(*[]ContainerStatus)(unsafe.Pointer(&in.ContainerStatuses))
+	out.PodAddresses = *(*[]PodAddress)(unsafe.Pointer(&in.PodAddresses))
+	out.CPUSet = in.CPUSet
 	return nil
 }
 

@@ -108,7 +108,7 @@ type FakeExtender struct {
 	weight       int
 }
 
-func (f *FakeExtender) Filter(pod *api.Pod, nodes []*api.Node) ([]*api.Node, schedulerapi.FailedNodesMap, error) {
+func (f *FakeExtender) Filter(pod *api.Pod, nodes []*api.Node, nodeNameToInfo map[string]*schedulercache.NodeInfo) ([]*api.Node, schedulerapi.FailedNodesMap, error) {
 	filtered := []*api.Node{}
 	failedNodesMap := schedulerapi.FailedNodesMap{}
 	for _, node := range nodes {
@@ -132,7 +132,7 @@ func (f *FakeExtender) Filter(pod *api.Pod, nodes []*api.Node) ([]*api.Node, sch
 	return filtered, failedNodesMap, nil
 }
 
-func (f *FakeExtender) Prioritize(pod *api.Pod, nodes []*api.Node) (*schedulerapi.HostPriorityList, int, error) {
+func (f *FakeExtender) Prioritize(pod *api.Pod, nodes []*api.Node, nodeNameToInfo map[string]*schedulercache.NodeInfo) (*schedulerapi.HostPriorityList, int, error) {
 	result := schedulerapi.HostPriorityList{}
 	combinedScores := map[string]int{}
 	for _, prioritizer := range f.prioritizers {

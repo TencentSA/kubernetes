@@ -491,6 +491,15 @@ func describePod(pod *api.Pod, events *api.EventList) (string, error) {
 			fmt.Fprintf(out, "Message:\t%s\n", pod.Status.Message)
 		}
 		fmt.Fprintf(out, "IP:\t%s\n", pod.Status.PodIP)
+		if len(pod.Status.PodAddresses) > 0 {
+			fmt.Fprint(out, "Pod Address:\n  Address\tIfName\n")
+			for _, a := range pod.Status.PodAddresses {
+				fmt.Fprintf(out, "  %v \t%v \n",
+					a.Address,
+					a.IfName)
+			}
+		}
+		fmt.Fprintf(out, "CPUSet:\t%s\n", pod.Status.CPUSet)
 		fmt.Fprintf(out, "Controllers:\t%s\n", printControllers(pod.Annotations))
 		if len(pod.Spec.InitContainers) > 0 {
 			describeContainers("Init Containers", pod.Spec.InitContainers, pod.Status.InitContainerStatuses, EnvValueRetriever(pod), out, "")

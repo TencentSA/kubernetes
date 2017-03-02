@@ -28,6 +28,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -40,6 +41,7 @@ import (
 	"k8s.io/kubernetes/pkg/kubelet/cm"
 	kubecontainer "k8s.io/kubernetes/pkg/kubelet/container"
 	"k8s.io/kubernetes/pkg/kubelet/envvars"
+	"k8s.io/kubernetes/pkg/kubelet/gpu/nvidia"
 	"k8s.io/kubernetes/pkg/kubelet/images"
 	"k8s.io/kubernetes/pkg/kubelet/server/remotecommand"
 	"k8s.io/kubernetes/pkg/kubelet/status"
@@ -71,28 +73,44 @@ func (kl *Kubelet) listPodsFromDisk() ([]types.UID, error) {
 	return pods, nil
 }
 
-// getActivePods returns non-terminal pods
-func (kl *Kubelet) getActivePods() []*api.Pod {
+// GetActivePods returns non-terminal pods
+func (kl *Kubelet) GetActivePods() []*api.Pod {
 	allPods := kl.podManager.GetPods()
 	activePods := kl.filterOutTerminatedPods(allPods)
 	return activePods
 }
 
 // makeDevices determines the devices for the given container.
-// Experimental. For now, we hardcode /dev/nvidia0 no matter what the user asks for
-// (we only support one device per node).
-// TODO: add support for more than 1 GPU after #28216.
-func makeDevices(container *api.Container) []kubecontainer.DeviceInfo {
+func (kl *Kubelet) makeDevices(container *api.Container) []kubecontainer.DeviceInfo {
 	nvidiaGPULimit := container.Resources.Limits.NvidiaGPU()
+
 	if nvidiaGPULimit.Value() != 0 {
-		return []kubecontainer.DeviceInfo{
-			{PathOnHost: "/dev/nvidia0", PathInContainer: "/dev/nvidia0", Permissions: "mrw"},
-			{PathOnHost: "/dev/nvidiactl", PathInContainer: "/dev/nvidiactl", Permissions: "mrw"},
-			{PathOnHost: "/dev/nvidia-uvm", PathInContainer: "/dev/nvidia-uvm", Permissions: "mrw"},
+		if nvidiaGPUPaths, err := kl.nvidiaGPUManager.AllocateGPUs(int(nvidiaGPULimit.Value())); err == nil {
+			devices := []kubecontainer.DeviceInfo{{PathOnHost: nvidia.NvidiaCtlDevice, PathInContainer: nvidia.NvidiaCtlDevice, Permissions: "mrw"},
+				{PathOnHost: nvidia.NvidiaUVMDevice, PathInContainer: nvidia.NvidiaUVMDevice, Permissions: "mrw"}}
+
+			for i, path := range nvidiaGPUPaths {
+				devices = append(devices, kubecontainer.DeviceInfo{PathOnHost: path, PathInContainer: "/dev/nvidia" + strconv.Itoa(i), Permissions: "mrw"})
+			}
+
+			return devices
+
 		}
 	}
 
 	return nil
+}
+
+func (kl *Kubelet) makeCPUs(pod *api.Pod, container *api.Container) string {
+	cpuInfo, err := kl.cpuManager.AllocateCPU(pod, container)
+	if err != nil {
+		glog.Errorf("Failed to allocate cpu")
+		return ""
+	}
+	if cpus, ok := cpuInfo["cpus"]; ok {
+		return cpus
+	}
+	return ""
 }
 
 // makeMounts determines the mount points for the given container.
@@ -150,6 +168,9 @@ func makeMounts(pod *api.Pod, podDir string, container *api.Container, hostName,
 		})
 	}
 	if mountEtcHostsFile {
+		if len(hostDomain) <= 0 {
+			hostDomain = strings.Join([]string{pod.Namespace, "pod.cluster.local"}, ".")
+		}
 		hostsMount, err := makeHostsMount(podDir, podIP, hostName, hostDomain)
 		if err != nil {
 			return nil, err
@@ -304,7 +325,7 @@ func (kl *Kubelet) GenerateRunContainerOptions(pod *api.Pod, container *api.Cont
 	volumes := kl.volumeManager.GetMountedVolumesForPod(podName)
 
 	opts.PortMappings = makePortMappings(container)
-	opts.Devices = makeDevices(container)
+	opts.Devices = kl.makeDevices(container)
 
 	opts.Mounts, err = makeMounts(pod, kl.getPodDir(pod.UID), container, hostname, hostDomainName, podIP, volumes)
 	if err != nil {
@@ -335,6 +356,8 @@ func (kl *Kubelet) GenerateRunContainerOptions(pod *api.Pod, container *api.Cont
 	if kl.experimentalHostUserNamespaceDefaulting {
 		opts.EnableHostUserNamespace = kl.enableHostUserNamespace(pod)
 	}
+
+	opts.CPUs = kl.makeCPUs(pod, container)
 
 	return opts, nil
 }
@@ -1080,6 +1103,12 @@ func (kl *Kubelet) generateAPIPodStatus(pod *api.Pod, podStatus *kubecontainer.P
 func (kl *Kubelet) convertStatusToAPIStatus(pod *api.Pod, podStatus *kubecontainer.PodStatus) *api.PodStatus {
 	var apiPodStatus api.PodStatus
 	apiPodStatus.PodIP = podStatus.IP
+	if len(podStatus.CPUSet) > 0 {
+		apiPodStatus.CPUSet = podStatus.CPUSet
+	}
+	if len(podStatus.PodAddresses) > 0 {
+		apiPodStatus.PodAddresses = podStatus.PodAddresses
+	}
 
 	apiPodStatus.ContainerStatuses = kl.convertToAPIContainerStatuses(
 		pod, podStatus,

@@ -134,6 +134,7 @@ func RegisterDeepCopies(scheme *runtime.Scheme) error {
 		conversion.GeneratedDeepCopyFunc{Fn: DeepCopy_v1_PersistentVolumeStatus, InType: reflect.TypeOf(&PersistentVolumeStatus{})},
 		conversion.GeneratedDeepCopyFunc{Fn: DeepCopy_v1_PhotonPersistentDiskVolumeSource, InType: reflect.TypeOf(&PhotonPersistentDiskVolumeSource{})},
 		conversion.GeneratedDeepCopyFunc{Fn: DeepCopy_v1_Pod, InType: reflect.TypeOf(&Pod{})},
+		conversion.GeneratedDeepCopyFunc{Fn: DeepCopy_v1_PodAddress, InType: reflect.TypeOf(&PodAddress{})},
 		conversion.GeneratedDeepCopyFunc{Fn: DeepCopy_v1_PodAffinity, InType: reflect.TypeOf(&PodAffinity{})},
 		conversion.GeneratedDeepCopyFunc{Fn: DeepCopy_v1_PodAffinityTerm, InType: reflect.TypeOf(&PodAffinityTerm{})},
 		conversion.GeneratedDeepCopyFunc{Fn: DeepCopy_v1_PodAntiAffinity, InType: reflect.TypeOf(&PodAntiAffinity{})},
@@ -2319,6 +2320,16 @@ func DeepCopy_v1_Pod(in interface{}, out interface{}, c *conversion.Cloner) erro
 	}
 }
 
+func DeepCopy_v1_PodAddress(in interface{}, out interface{}, c *conversion.Cloner) error {
+	{
+		in := in.(*PodAddress)
+		out := out.(*PodAddress)
+		out.Address = in.Address
+		out.IfName = in.IfName
+		return nil
+	}
+}
+
 func DeepCopy_v1_PodAffinity(in interface{}, out interface{}, c *conversion.Cloner) error {
 	{
 		in := in.(*PodAffinity)
@@ -2726,6 +2737,16 @@ func DeepCopy_v1_PodStatus(in interface{}, out interface{}, c *conversion.Cloner
 		} else {
 			out.ContainerStatuses = nil
 		}
+		if in.PodAddresses != nil {
+			in, out := &in.PodAddresses, &out.PodAddresses
+			*out = make([]PodAddress, len(*in))
+			for i := range *in {
+				(*out)[i] = (*in)[i]
+			}
+		} else {
+			out.PodAddresses = nil
+		}
+		out.CPUSet = in.CPUSet
 		return nil
 	}
 }

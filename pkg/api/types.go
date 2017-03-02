@@ -1930,6 +1930,10 @@ type PodStatus struct {
 	// when we have done this.
 	// +optional
 	ContainerStatuses []ContainerStatus `json:"containerStatuses,omitempty"`
+	// Additional IP addresses of the pod
+	PodAddresses []PodAddress `json:"podAddresses,omitempty"`
+	// CPU core
+	CPUSet string `json:"cpuSet,omitempty"`
 }
 
 // PodStatusResult is a wrapper for PodStatus returned by kubelet that can be encode/decoded
@@ -3540,3 +3544,10 @@ const (
 	// DefaultFailureDomains defines the set of label keys used when TopologyKey is empty in PreferredDuringScheduling anti-affinity.
 	DefaultFailureDomains string = unversioned.LabelHostname + "," + unversioned.LabelZoneFailureDomain + "," + unversioned.LabelZoneRegion
 )
+
+type PodAddress struct {
+	// Address contains the IPv4 and mask to set on the network interface
+	Address string `json:"address,omitempty"`
+	// IfName contains the network interface name
+	IfName string `json:"ifName,omitempty"`
+}

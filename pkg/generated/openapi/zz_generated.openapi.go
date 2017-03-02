@@ -10724,6 +10724,29 @@ var OpenAPIDefinitions *common.OpenAPIDefinitions = &common.OpenAPIDefinitions{
 		Dependencies: []string{
 			"v1.ObjectMeta", "v1.PodSpec", "v1.PodStatus"},
 	},
+	"v1.PodAddress": {
+		Schema: spec.Schema{
+			SchemaProps: spec.SchemaProps{
+				Properties: map[string]spec.Schema{
+					"address": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Address contains the IPv4 and mask to set on the network interface",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"ifName": {
+						SchemaProps: spec.SchemaProps{
+							Description: "IfName contains the network interface name",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+				},
+			},
+		},
+		Dependencies: []string{},
+	},
 	"v1.PodAffinity": {
 		Schema: spec.Schema{
 			SchemaProps: spec.SchemaProps{
@@ -11404,11 +11427,31 @@ var OpenAPIDefinitions *common.OpenAPIDefinitions = &common.OpenAPIDefinitions{
 							},
 						},
 					},
+					"podAddresses": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Additional IP addresses of the pod",
+							Type:        []string{"array"},
+							Items: &spec.SchemaOrArray{
+								Schema: &spec.Schema{
+									SchemaProps: spec.SchemaProps{
+										Ref: spec.MustCreateRef("#/definitions/v1.PodAddress"),
+									},
+								},
+							},
+						},
+					},
+					"cpuSet": {
+						SchemaProps: spec.SchemaProps{
+							Description: "CPU core",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
 				},
 			},
 		},
 		Dependencies: []string{
-			"unversioned.Time", "v1.ContainerStatus", "v1.PodCondition"},
+			"unversioned.Time", "v1.ContainerStatus", "v1.PodAddress", "v1.PodCondition"},
 	},
 	"v1.PodStatusResult": {
 		Schema: spec.Schema{

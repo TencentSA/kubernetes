@@ -34,10 +34,11 @@ import (
 )
 
 const (
-	CNIPluginName        = "cni"
-	DefaultNetDir        = "/etc/cni/net.d"
-	DefaultCNIDir        = "/opt/cni/bin"
-	VendorCNIDirTemplate = "%s/opt/%s/bin"
+	CNIPluginName             = "cni"
+	DefaultNetDir             = "/etc/cni/net.d"
+	DefaultCNIDir             = "/opt/cni/bin"
+	VendorCNIDirTemplate      = "%s/opt/%s/bin"
+	MultiNetworkAnnotationKey = "network.cni/multinetwork"
 )
 
 type cniNetworkPlugin struct {
@@ -198,13 +199,13 @@ func (plugin *cniNetworkPlugin) SetUpPod(namespace string, name string, id kubec
 		return fmt.Errorf("CNI failed to retrieve network namespace path: %v", err)
 	}
 
-	_, err = plugin.loNetwork.addToNetwork(name, namespace, id, netnsPath)
+	_, err = plugin.addToNetwork(plugin.loNetwork, name, namespace, id, netnsPath)
 	if err != nil {
 		glog.Errorf("Error while adding to cni lo network: %s", err)
 		return err
 	}
 
-	_, err = plugin.getDefaultNetwork().addToNetwork(name, namespace, id, netnsPath)
+	_, err = plugin.addToNetwork(plugin.getDefaultNetwork(), name, namespace, id, netnsPath)
 	if err != nil {
 		glog.Errorf("Error while adding to cni network: %s", err)
 		return err
@@ -221,8 +222,11 @@ func (plugin *cniNetworkPlugin) TearDownPod(namespace string, name string, id ku
 	if err != nil {
 		return fmt.Errorf("CNI failed to retrieve network namespace path: %v", err)
 	}
+	if netnsPath == "" {
+		return nil
+	}
 
-	return plugin.getDefaultNetwork().deleteFromNetwork(name, namespace, id, netnsPath)
+	return plugin.deleteFromNetwork(plugin.getDefaultNetwork(), name, namespace, id, netnsPath)
 }
 
 // TODO: Use the addToNetwork function to obtain the IP of the Pod. That will assume idempotent ADD call to the plugin.
@@ -241,8 +245,8 @@ func (plugin *cniNetworkPlugin) GetPodNetworkStatus(namespace string, name strin
 	return &network.PodNetworkStatus{IP: ip}, nil
 }
 
-func (network *cniNetwork) addToNetwork(podName string, podNamespace string, podInfraContainerID kubecontainer.ContainerID, podNetnsPath string) (*cnitypes.Result, error) {
-	rt, err := buildCNIRuntimeConf(podName, podNamespace, podInfraContainerID, podNetnsPath)
+func (plugin *cniNetworkPlugin) addToNetwork(network *cniNetwork, podName string, podNamespace string, podInfraContainerID kubecontainer.ContainerID, podNetnsPath string) (*cnitypes.Result, error) {
+	rt, err := plugin.buildCNIRuntimeConf(podName, podNamespace, podInfraContainerID, podNetnsPath)
 	if err != nil {
 		glog.Errorf("Error adding network: %v", err)
 		return nil, err
@@ -259,8 +263,8 @@ func (network *cniNetwork) addToNetwork(podName string, podNamespace string, pod
 	return res, nil
 }
 
-func (network *cniNetwork) deleteFromNetwork(podName string, podNamespace string, podInfraContainerID kubecontainer.ContainerID, podNetnsPath string) error {
-	rt, err := buildCNIRuntimeConf(podName, podNamespace, podInfraContainerID, podNetnsPath)
+func (plugin *cniNetworkPlugin) deleteFromNetwork(network *cniNetwork, podName string, podNamespace string, podInfraContainerID kubecontainer.ContainerID, podNetnsPath string) error {
+	rt, err := plugin.buildCNIRuntimeConf(podName, podNamespace, podInfraContainerID, podNetnsPath)
 	if err != nil {
 		glog.Errorf("Error deleting network: %v", err)
 		return err
@@ -276,7 +280,7 @@ func (network *cniNetwork) deleteFromNetwork(podName string, podNamespace string
 	return nil
 }
 
-func buildCNIRuntimeConf(podName string, podNs string, podInfraContainerID kubecontainer.ContainerID, podNetnsPath string) (*libcni.RuntimeConf, error) {
+func (plugin *cniNetworkPlugin) buildCNIRuntimeConf(podName string, podNs string, podInfraContainerID kubecontainer.ContainerID, podNetnsPath string) (*libcni.RuntimeConf, error) {
 	glog.V(4).Infof("Got netns path %v", podNetnsPath)
 	glog.V(4).Infof("Using netns path %v", podNs)
 
@@ -291,6 +295,23 @@ func buildCNIRuntimeConf(podName string, podNs string, podInfraContainerID kubec
 			{"K8S_POD_INFRA_CONTAINER_ID", podInfraContainerID.ID},
 		},
 	}
+	pod, ok := plugin.host.GetPodByName(podNs, podName)
+	if ok {
+		if multinet, ok := pod.Annotations[MultiNetworkAnnotationKey]; ok {
+			cores, err := plugin.host.GetPodCores(podInfraContainerID.ID)
+			if err != nil {
+				return nil, fmt.Errorf("CNI failed to retrieve pod cpu cores: %v", err)
+			}
+			rt.Args = append(rt.Args, [][2]string{
+				{"PodID", podName + "_" + podNs + "_" + pod.Status.HostIP},
+				{"MultiNetwork", multinet},
+				{"HostIP", pod.Status.HostIP},
+				{"CORES", cores},
+			}...)
+		}
+	}
+
+	glog.V(3).Infof("CNI runtimeconf: %+v", rt)
 
 	return rt, nil
 }

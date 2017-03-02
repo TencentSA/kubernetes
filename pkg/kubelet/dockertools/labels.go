@@ -19,6 +19,7 @@ package dockertools
 import (
 	"encoding/json"
 	"strconv"
+	"strings"
 
 	"github.com/golang/glog"
 	"k8s.io/kubernetes/pkg/api"
@@ -68,6 +69,13 @@ type labelledContainerInfo struct {
 
 func newLabels(container *api.Container, pod *api.Pod, restartCount int, enableCustomMetrics bool) map[string]string {
 	labels := map[string]string{}
+	// clone pod labels to container
+	if pod.Labels != nil {
+		for k, v := range pod.Labels {
+			s := []string{"io", "kubernetes", "pod", "metadata", "label", k}
+			labels[strings.Join(s, ".")] = v
+		}
+	}
 	labels[types.KubernetesPodNameLabel] = pod.Name
 	labels[types.KubernetesPodNamespaceLabel] = pod.Namespace
 	labels[types.KubernetesPodUIDLabel] = string(pod.UID)

@@ -142,6 +142,8 @@ type Host interface {
 type NamespaceGetter interface {
 	// GetNetNS returns network namespace information for the given containerID.
 	GetNetNS(containerID string) (string, error)
+	// GetNetWxtraInfo returns network extra info. e.g. cpuset\nodeIP...
+	GetPodCores(containerID string) (string, error)
 }
 
 // InitNetworkPlugin inits the plugin that matches networkPluginName. Plugins must have unique names.

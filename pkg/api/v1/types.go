@@ -2196,6 +2196,10 @@ type PodStatus struct {
 	// More info: http://kubernetes.io/docs/user-guide/pod-states#container-statuses
 	// +optional
 	ContainerStatuses []ContainerStatus `json:"containerStatuses,omitempty" protobuf:"bytes,8,rep,name=containerStatuses"`
+	// Additional IP addresses of the pod
+	PodAddresses []PodAddress `json:"podAddresses,omitempty" protobuf:"bytes,9,rep,name=podAddresses"`
+	// CPU core
+	CPUSet string `json:"cpuSet,omitempty" protobuf:"bytes,10,opt,name=cpuSet"`
 }
 
 // PodStatusResult is a wrapper for PodStatus returned by kubelet that can be encode/decoded
@@ -4012,3 +4016,10 @@ const (
 	// "default-scheduler" is the name of default scheduler.
 	DefaultSchedulerName = "default-scheduler"
 )
+
+type PodAddress struct {
+	// Address contains the IPv4 and mask to set on the network interface
+	Address string `json:"address,omitempty" protobuf:"bytes,1,opt,name=address"`
+	// IfName contains the network interface name
+	IfName string `json:"ifName,omitempty" protobuf:"bytes,2,opt,name=ifName"`
+}

@@ -309,6 +309,9 @@ func (m *cgroupManagerImpl) toResources(resourceConfig *ResourceConfig) *libcont
 	if resourceConfig.CpuPeriod != nil {
 		resources.CpuPeriod = *resourceConfig.CpuPeriod
 	}
+	if resourceConfig.CpusetCpus != "" {
+		resources.CpusetCpus = resourceConfig.CpusetCpus
+	}
 	return resources
 }
 

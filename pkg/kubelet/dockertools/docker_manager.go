@@ -24,6 +24,7 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
+	"net"
 	"os"
 	"os/exec"
 	"path"
@@ -53,7 +54,7 @@ import (
 	"k8s.io/kubernetes/pkg/kubelet/lifecycle"
 	"k8s.io/kubernetes/pkg/kubelet/metrics"
 	"k8s.io/kubernetes/pkg/kubelet/network"
-	"k8s.io/kubernetes/pkg/kubelet/network/hairpin"
+	//	"k8s.io/kubernetes/pkg/kubelet/network/hairpin"
 	proberesults "k8s.io/kubernetes/pkg/kubelet/prober/results"
 	"k8s.io/kubernetes/pkg/kubelet/qos"
 	"k8s.io/kubernetes/pkg/kubelet/types"
@@ -190,6 +191,8 @@ type DockerManager struct {
 
 	// Directory to host local seccomp profiles.
 	seccompProfileRoot string
+
+	sync.Mutex
 }
 
 // A subset of the pod.Manager interface extracted for testing purposes.
@@ -370,7 +373,12 @@ func (dm *DockerManager) determineContainerIP(podNamespace, podName string, cont
 	if !isHostNetwork && dm.networkPlugin.Name() != network.DefaultPluginName {
 		netStatus, err := dm.networkPlugin.GetPodNetworkStatus(podNamespace, podName, kubecontainer.DockerID(container.ID).ContainerID())
 		if err != nil {
-			glog.Errorf("NetworkPlugin %s failed on the status hook for pod '%s' - %v", dm.networkPlugin.Name(), podName, err)
+			// Ignore errors for now; PLEG races against network
+			// setup and asks for status (including IP) before
+			// the pod network is ready
+			// TODO(dcbw): don't call GetPodNetworkStatus() until
+			// we know networking is set up
+			// glog.Errorf("NetworkPlugin %s failed on the status hook for pod '%s' - %v", dm.networkPlugin.Name(), podName, err)
 			return result, err
 		} else if netStatus != nil {
 			result = netStatus.IP.String()
@@ -380,19 +388,60 @@ func (dm *DockerManager) determineContainerIP(podNamespace, podName string, cont
 	return result, nil
 }
 
-func (dm *DockerManager) inspectContainer(id string, podName, podNamespace string) (*kubecontainer.ContainerStatus, string, error) {
-	var ip string
+func (dm *DockerManager) findContainerExtenderAddresses(container *dockertypes.ContainerJSON) ([]api.PodAddress, error) {
+	var podAddresses []api.PodAddress
+	nsenterPath, lookupErr := exec.LookPath("nsenter")
+	if lookupErr != nil {
+		return podAddresses, fmt.Errorf("Failed to find nsenter path.")
+	}
+	netnsPath, err := dm.GetNetNS(kubecontainer.DockerID(container.ID).ContainerID())
+	if err != nil {
+		return podAddresses, fmt.Errorf("Failed to retrieve network namespace path: %v", err)
+	}
+	output, err := exec.Command(nsenterPath, fmt.Sprintf("--net=%s", netnsPath), "-F", "--",
+		"ip", "-o", "-4", "addr", "show").CombinedOutput()
+	if err != nil {
+		return podAddresses, fmt.Errorf("Unexpected command output %s with error: %v", output, err)
+	}
+	lines := strings.Split(string(output), "\n")
+	for _, line := range lines {
+		fields := strings.Fields(line)
+		if len(fields) < 4 || fields[1] == "lo" || fields[1] == network.DefaultInterfaceName {
+			continue
+		}
+		ip, _, err := net.ParseCIDR(fields[3])
+		if err != nil {
+			return podAddresses, fmt.Errorf("Failed to parse ip from output %v due to %v", line, err)
+		}
+		podAddresses = append(podAddresses, api.PodAddress{
+			Address: ip.String(),
+			IfName:  fields[1],
+		})
+	}
+	return podAddresses, nil
+}
+
+func (dm *DockerManager) inspectContainer(id string, podName, podNamespace string) (*kubecontainer.ContainerStatus, string, string, []api.PodAddress, error) {
+	var (
+		ip           string
+		cpuset       string
+		podAddresses []api.PodAddress
+	)
 	iResult, err := dm.client.InspectContainer(id)
 	if err != nil {
-		return nil, ip, err
+		return nil, ip, cpuset, podAddresses, err
 	}
 	glog.V(4).Infof("Container inspect result: %+v", *iResult)
+
+	if iResult.HostConfig.CpusetCpus != "" {
+		cpuset = iResult.HostConfig.CpusetCpus
+	}
 
 	// TODO: Get k8s container name by parsing the docker name. This will be
 	// replaced by checking docker labels eventually.
 	dockerName, hash, err := ParseDockerName(iResult.Name)
 	if err != nil {
-		return nil, ip, fmt.Errorf("Unable to parse docker name %q", iResult.Name)
+		return nil, ip, cpuset, podAddresses, fmt.Errorf("Unable to parse docker name %q", iResult.Name)
 	}
 	containerName := dockerName.ContainerName
 
@@ -449,8 +498,14 @@ func (dm *DockerManager) inspectContainer(id string, podName, podNamespace strin
 				status.State = kubecontainer.ContainerStateUnknown
 				status.Message = fmt.Sprintf("Network error: %#v", err)
 			}
+			// Find containers extender network interface info
+			podAddresses, err = dm.findContainerExtenderAddresses(iResult)
+			if err != nil {
+				status.State = kubecontainer.ContainerStateUnknown
+				status.Message = fmt.Sprintf("Extender network error: %#v", err)
+			}
 		}
-		return &status, ip, nil
+		return &status, ip, cpuset, podAddresses, nil
 	}
 
 	// Find containers that have exited or failed to start.
@@ -500,7 +555,7 @@ func (dm *DockerManager) inspectContainer(id string, podName, podNamespace strin
 		// start container function etc.) Kubelet doesn't handle these scenarios yet.
 		status.State = kubecontainer.ContainerStateUnknown
 	}
-	return &status, "", nil
+	return &status, "", cpuset, podAddresses, nil
 }
 
 // makeEnvList converts EnvVar list to a list of strings, in the form of
@@ -735,7 +790,19 @@ func (dm *DockerManager) runContainer(
 		hc.OomScoreAdj = oomScoreAdj
 	}
 
-	if dm.cpuCFSQuota {
+	var cpuset string
+	if container.Name != PodInfraContainerName {
+		containerID := strings.Replace(netMode, "container:", "", -1)
+		if iResult, err := dm.client.InspectContainer(containerID); err == nil {
+			cpuset = iResult.HostConfig.CpusetCpus
+		}
+	} else {
+		cpuset = opts.CPUs
+	}
+
+	if len(cpuset) > 0 {
+		hc.CpusetCpus = cpuset
+	} else if dm.cpuCFSQuota {
 		// if cpuLimit.Amount is nil, then the appropriate default value is returned to allow full usage of cpu resource.
 		cpuQuota, cpuPeriod := cm.MilliCPUToQuota(cpuLimit.MilliValue())
 
@@ -1710,6 +1777,8 @@ func (dm *DockerManager) applyOOMScoreAdj(pod *api.Pod, container *api.Container
 // Run a single container from a pod. Returns the docker container ID
 // If do not need to pass labels, just pass nil.
 func (dm *DockerManager) runContainerInPod(pod *api.Pod, container *api.Container, netMode, ipcMode, pidMode, podIP string, restartCount int) (kubecontainer.ContainerID, error) {
+	dm.Lock()
+	defer dm.Unlock()
 	start := time.Now()
 	defer func() {
 		metrics.ContainerManagerLatency.WithLabelValues("runContainerInPod").Observe(metrics.SinceInMicroseconds(start))
@@ -2221,9 +2290,9 @@ func (dm *DockerManager) SyncPod(pod *api.Pod, _ api.PodStatus, podStatus *kubec
 			}
 
 			if dm.configureHairpinMode {
-				if err = hairpin.SetUpContainerPid(podInfraContainer.State.Pid, network.DefaultInterfaceName); err != nil {
-					glog.Warningf("Hairpin setup failed for pod %q: %v", format.Pod(pod), err)
-				}
+				//if err = hairpin.SetUpContainerPid(podInfraContainer.State.Pid, network.DefaultInterfaceName); err != nil {
+				//	glog.Warningf("Hairpin setup failed for pod %q: %v", format.Pod(pod), err)
+				//}
 			}
 
 			// Overwrite the podIP passed in the pod status, since we just started the infra container.
@@ -2538,6 +2607,10 @@ func (dm *DockerManager) doBackOff(pod *api.Pod, container *api.Container, podSt
 			glog.Infof("%s", err.Error())
 			return true, kubecontainer.ErrCrashLoopBackOff, err.Error()
 		}
+		maxRestartTimes, err := strconv.Atoi(pod.ObjectMeta.Annotations["maxRestartTimes"])
+		if err == nil && cStatus.RestartCount >= maxRestartTimes {
+			return true, kubecontainer.ErrCrashTooMany, "The maxRestartTimes is meeted by RestartCount"
+		}
 		backOff.Next(stableName, ts)
 	}
 	return false, nil, ""
@@ -2581,6 +2654,15 @@ func (dm *DockerManager) GetNetNS(containerID kubecontainer.ContainerID) (string
 
 	netnsPath := fmt.Sprintf(DockerNetnsFmt, inspectResult.State.Pid)
 	return netnsPath, nil
+}
+
+func (dm *DockerManager) GetPodCores(containerID kubecontainer.ContainerID) (string, error) {
+	inspectResult, err := dm.client.InspectContainer(containerID.ID)
+	if err != nil {
+		glog.Errorf("Error inspecting container: '%v'", err)
+		return "", err
+	}
+	return inspectResult.HostConfig.CpusetCpus, nil
 }
 
 func (dm *DockerManager) GetPodContainerID(pod *kubecontainer.Pod) (kubecontainer.ContainerID, error) {
@@ -2636,7 +2718,7 @@ func (dm *DockerManager) GetPodStatus(uid kubetypes.UID, name, namespace string)
 		if dockerName.PodUID != uid {
 			continue
 		}
-		result, ip, err := dm.inspectContainer(c.ID, name, namespace)
+		result, ip, cpuset, podAddresses, err := dm.inspectContainer(c.ID, name, namespace)
 		if err != nil {
 			if _, ok := err.(containerNotFoundError); ok {
 				// https://github.com/kubernetes/kubernetes/issues/22541
@@ -2656,6 +2738,12 @@ func (dm *DockerManager) GetPodStatus(uid kubetypes.UID, name, namespace string)
 		containerStatuses = append(containerStatuses, result)
 		if containerProvidesPodIP(dockerName) && ip != "" {
 			podStatus.IP = ip
+		}
+		if cpuset != "" {
+			podStatus.CPUSet = cpuset
+		}
+		if len(podAddresses) > 0 {
+			podStatus.PodAddresses = podAddresses
 		}
 	}
 

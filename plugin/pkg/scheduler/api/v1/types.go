@@ -137,6 +137,8 @@ type ExtenderArgs struct {
 	Pod apiv1.Pod `json:"pod"`
 	// List of candidate nodes where the pod can be scheduled
 	Nodes apiv1.NodeList `json:"nodes"`
+	// Mapping scheduled's pod to node
+	NodeToPods map[string][]*apiv1.Pod `json:"nodeToPods"`
 }
 
 // FailedNodesMap represents the filtered out nodes, with node names and failure messages

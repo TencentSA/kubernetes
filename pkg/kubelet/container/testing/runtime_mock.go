@@ -159,3 +159,8 @@ func (r *Mock) ImageStats() (*ImageStats, error) {
 func (r *Mock) UpdatePodCIDR(c string) error {
 	return nil
 }
+
+func (r *Mock) GetPodCores(containerID ContainerID) (string, error) {
+	args := r.Called(containerID)
+	return "", args.Error(0)
+}

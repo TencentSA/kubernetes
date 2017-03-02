@@ -1149,6 +1149,15 @@ func (Pod) SwaggerDoc() map[string]string {
 	return map_Pod
 }
 
+var map_PodAddress = map[string]string{
+	"address": "Address contains the IPv4 and mask to set on the network interface",
+	"ifName":  "IfName contains the network interface name",
+}
+
+func (PodAddress) SwaggerDoc() map[string]string {
+	return map_PodAddress
+}
+
 var map_PodAffinity = map[string]string{
 	"": "Pod affinity is a group of inter pod affinity scheduling rules.",
 	"requiredDuringSchedulingIgnoredDuringExecution":  "NOT YET IMPLEMENTED. TODO: Uncomment field once it is implemented. If the affinity requirements specified by this field are not met at scheduling time, the pod will not be scheduled onto the node. If the affinity requirements specified by this field cease to be met at some point during pod execution (e.g. due to a pod label update), the system will try to eventually evict the pod from its node. When there are multiple elements, the lists of nodes corresponding to each podAffinityTerm are intersected, i.e. all terms must be satisfied. RequiredDuringSchedulingRequiredDuringExecution []PodAffinityTerm  `json:\"requiredDuringSchedulingRequiredDuringExecution,omitempty\"` If the affinity requirements specified by this field are not met at scheduling time, the pod will not be scheduled onto the node. If the affinity requirements specified by this field cease to be met at some point during pod execution (e.g. due to a pod label update), the system may or may not try to eventually evict the pod from its node. When there are multiple elements, the lists of nodes corresponding to each podAffinityTerm are intersected, i.e. all terms must be satisfied.",
@@ -1313,6 +1322,8 @@ var map_PodStatus = map[string]string{
 	"podIP":             "IP address allocated to the pod. Routable at least within the cluster. Empty if not yet allocated.",
 	"startTime":         "RFC 3339 date and time at which the object was acknowledged by the Kubelet. This is before the Kubelet pulled the container image(s) for the pod.",
 	"containerStatuses": "The list has one entry per container in the manifest. Each entry is currently the output of `docker inspect`. More info: http://kubernetes.io/docs/user-guide/pod-states#container-statuses",
+	"podAddresses":      "Additional IP addresses of the pod",
+	"cpuSet":            "CPU core",
 }
 
 func (PodStatus) SwaggerDoc() map[string]string {

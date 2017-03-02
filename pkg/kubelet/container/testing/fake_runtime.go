@@ -494,3 +494,7 @@ func (f *FakeContainerCommandRunner) RunInContainer(containerID ContainerID, cmd
 
 	return []byte(f.Stdout), f.Err
 }
+
+func (f *FakeRuntime) GetPodCores(containerID ContainerID) (string, error) {
+	return "", nil
+}

@@ -209,6 +209,14 @@ func (ds *dockerService) GetNetNS(podSandboxID string) (string, error) {
 	return getNetworkNamespace(r), nil
 }
 
+func (ds *dockerService) GetPodCores(podSandboxID string) (string, error) {
+	r, err := ds.client.InspectContainer(podSandboxID)
+	if err != nil {
+		return "", err
+	}
+	return r.HostConfig.CpusetCpus, nil
+}
+
 // dockerNetworkHost implements network.Host by wrapping the legacy host
 // passed in by the kubelet and adding NamespaceGetter methods. The legacy
 // host methods are slated for deletion.

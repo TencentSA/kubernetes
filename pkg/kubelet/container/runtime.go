@@ -120,6 +120,8 @@ type Runtime interface {
 	// This method just proxies a new runtimeConfig with the updated
 	// CIDR value down to the runtime shim.
 	UpdatePodCIDR(podCIDR string) error
+
+	GetPodCores(containerID ContainerID) (string, error)
 }
 
 // DirectStreamingRuntime is the interface implemented by runtimes for which the streaming calls
@@ -300,6 +302,9 @@ type PodStatus struct {
 	// Status of the pod sandbox.
 	// Only for kuberuntime now, other runtime may keep it nil.
 	SandboxStatuses []*runtimeApi.PodSandboxStatus
+	// CPUSet of the pod
+	CPUSet string
+	PodAddresses []api.PodAddress
 }
 
 // ContainerStatus represents the status of a container.
@@ -440,6 +445,8 @@ type RunContainerOptions struct {
 	// This should only be enabled when the container runtime is performing user remapping AND if the
 	// experimental behavior is desired.
 	EnableHostUserNamespace bool
+	// The CPUs
+	CPUs string
 }
 
 // VolumeInfo contains information about the volume.

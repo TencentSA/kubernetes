@@ -113,14 +113,22 @@ func ResourceConfigForPod(pod *api.Pod) *ResourceConfig {
 	result := &ResourceConfig{}
 	if qosClass == qos.Guaranteed {
 		result.CpuShares = &cpuShares
-		result.CpuQuota = &cpuQuota
-		result.CpuPeriod = &cpuPeriod
+		if len(pod.Status.CPUSet) > 0 {
+			result.CpusetCpus = pod.Status.CPUSet
+		} else {
+			result.CpuQuota = &cpuQuota
+			result.CpuPeriod = &cpuPeriod
+		}
 		result.Memory = &memoryLimits
 	} else if qosClass == qos.Burstable {
 		result.CpuShares = &cpuShares
 		if cpuLimitsDeclared {
-			result.CpuQuota = &cpuQuota
-			result.CpuPeriod = &cpuPeriod
+			if len(pod.Status.CPUSet) > 0 {
+				result.CpusetCpus = pod.Status.CPUSet
+			} else {
+				result.CpuQuota = &cpuQuota
+				result.CpuPeriod = &cpuPeriod
+			}
 		}
 		if memoryLimitsDeclared {
 			result.Memory = &memoryLimits

@@ -253,6 +253,7 @@ func (r *rbdVolumeProvisioner) Provision() (*api.PersistentVolume, error) {
 	adminSecretNamespace := "default"
 	secretName := ""
 	secret := ""
+	fstype := ""
 
 	for k, v := range r.options.Parameters {
 		switch dstrings.ToLower(k) {
@@ -273,6 +274,8 @@ func (r *rbdVolumeProvisioner) Provision() (*api.PersistentVolume, error) {
 			r.Pool = v
 		case "usersecretname":
 			secretName = v
+		case volume.VolumeParameterFSType:
+			fstype = v
 		default:
 			return nil, fmt.Errorf("invalid option %q for volume plugin %s", k, r.plugin.GetPluginName())
 		}
@@ -315,6 +318,7 @@ func (r *rbdVolumeProvisioner) Provision() (*api.PersistentVolume, error) {
 	rbd.SecretRef = new(api.LocalObjectReference)
 	rbd.SecretRef.Name = secretName
 	rbd.RadosUser = r.Id
+	rbd.FSType = fstype
 	pv.Spec.PersistentVolumeSource.RBD = rbd
 	pv.Spec.PersistentVolumeReclaimPolicy = r.options.PersistentVolumeReclaimPolicy
 	pv.Spec.AccessModes = r.options.PVC.Spec.AccessModes

@@ -2453,3 +2453,7 @@ func convertKubePortMappings(portMappings []kubecontainer.PortMapping) ([]appcty
 
 	return containerPorts, hostPorts
 }
+
+func (r *Runtime) GetPodCores(containerID kubecontainer.ContainerID) (string, error) {
+	return "", nil
+}

@@ -208,7 +208,7 @@ func findNodesThatFit(
 
 	if len(filtered) > 0 && len(extenders) != 0 {
 		for _, extender := range extenders {
-			filteredList, failedMap, err := extender.Filter(pod, filtered)
+			filteredList, failedMap, err := extender.Filter(pod, filtered, nodeNameToInfo)
 			if err != nil {
 				return []*api.Node{}, FailedPredicateMap{}, err
 			}
@@ -352,7 +352,7 @@ func PrioritizeNodes(
 			wg.Add(1)
 			go func(ext algorithm.SchedulerExtender) {
 				defer wg.Done()
-				prioritizedList, weight, err := ext.Prioritize(pod, nodes)
+				prioritizedList, weight, err := ext.Prioritize(pod, nodes, nodeNameToInfo)
 				if err != nil {
 					// Prioritization errors from extender can be ignored, let k8s/other extenders determine the priorities
 					return
